@@ -1,0 +1,34 @@
+package com.springmvc.service;
+
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.springmvc.entity.Todo;
+import com.springmvc.repository.TodoRepo;
+
+@Service
+public class TodoService {
+
+	  @Autowired
+	    private TodoRepo todoRepository;
+
+	    public List<Todo> getAllTodos() {
+	        try {
+				return TodoRepo.findAll();
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+	    }
+
+	    public Todo addTodo(Todo todo) {
+	        return todoRepository.save(todo);
+	    }
+
+	    public void deleteTodo(Long id) {
+	        todoRepository.deleteById(id);
+	    }
+	
+}
