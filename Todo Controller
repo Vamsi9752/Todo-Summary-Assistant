@@ -1,0 +1,114 @@
+package com.springmvc.controller;
+
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.springframework.http.HttpEntity;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
+
+import com.springmvc.entity.Todo;
+import com.springmvc.service.TodoService;
+
+import lombok.Value;
+
+@RestController
+@CrossOrigin(origins = "http://localhost:3000")
+public class TodoController {
+	
+	private final TodoService todoService;
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    @Value("${openai.api.key}")
+    private String openAiApiKey;
+
+    @Value("${slack.webhook.url}")
+    private String slackWebhookUrl;
+	private TodoService TodoService;
+
+    public TodoController(TodoService todoService) {
+        this.TodoService = todoService;
+    }
+
+    @GetMapping("/todos")
+    public List<Todo> getTodos() {
+        return todoService.getAllTodos();
+    }
+
+    @PostMapping("/todos")
+    public Todo addTodo(@RequestBody Todo todo) {
+        return todoService.addTodo(todo);
+    }
+
+    @DeleteMapping("/todos/{id}")
+    public void deleteTodo(@PathVariable Long id) {
+        todoService.deleteTodo(id);
+    }
+
+    @PostMapping("/summarize")
+    public ResponseEntity<String> summarizeTodos() {
+        List<Todo> todos = todoService.getAllTodos();
+        List<String> pendingTodos = todos.stream()
+                .filter(t -> !t.isCompleted())
+                .map(Todo::getTitle)
+                .collect(Collectors.toList());
+
+        if (pendingTodos.isEmpty()) {
+            return ResponseEntity.ok("No pending todos to summarize.");
+        }
+
+        String prompt = "Summarize these todos: " + String.join(", ", pendingTodos);
+        String summary = callOpenAiApi(prompt);
+        sendToSlack(summary);
+
+        return ResponseEntity.ok("Summary sent to Slack!");
+    }
+
+    private String callOpenAiApi(String prompt) {
+        String url = "https://api.openai.com/v1/chat/completions";
+
+        Map<String, Object> message = new HashMap<>();
+        message.put("role", "user");
+        message.put("content", prompt);
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", "gpt-3.5-turbo");
+        requestBody.put("messages", List.of(message));
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth("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");
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+        ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
+
+        List<Map<String, Object>> choices = (List<Map<String, Object>>) response.getBody().get("choices");
+        Map<String, Object> messageResponse = (Map<String, Object>) choices.get(0).get("message");
+        return (String) messageResponse.get("content");
+    }
+
+    private void sendToSlack(String message) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, String> payload = new HashMap<>();
+        payload.put("text", message);
+
+        HttpEntity<Map<String, String>> entity = new HttpEntity<>(payload, headers);
+        restTemplate.postForEntity("${https://todosummerassistant.slack.com/archives/C08TGPSJSR4", entity, String.class);
+    }
+
+
+}
